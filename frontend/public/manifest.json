@@ -1,0 +1,17 @@
+{
+  "name": "Dialed In",
+  "short_name": "Dialed In",
+  "description": "Personal espresso dial-in, shot tracking, and coffee journal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1614",
+  "theme_color": "#1c1614",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
