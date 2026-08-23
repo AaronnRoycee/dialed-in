@@ -170,6 +170,35 @@ export default function BeanPassportPage({
     window.location.reload()
   }
 
+  const remove = async () => {
+    if (!bean) return
+    const confirmed = window.confirm(
+      'Delete this bean, its photos, and its Golden Recipes? This cannot be undone.'
+    )
+    if (!confirmed) return
+
+    const { data: mediaData } = await supabase
+      .from('media')
+      .select('storage_path')
+      .eq('entity_type', 'bean')
+      .eq('entity_id', bean.id)
+
+    const paths = ((mediaData as { storage_path: string }[]) ?? []).map(
+      (m) => m.storage_path
+    )
+    if (paths.length > 0) {
+      await supabase.storage.from('media').remove(paths)
+      await supabase
+        .from('media')
+        .delete()
+        .eq('entity_type', 'bean')
+        .eq('entity_id', bean.id)
+    }
+
+    await supabase.from('beans').delete().eq('id', bean.id)
+    router.push('/beans')
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen p-6 flex items-center justify-center">
@@ -349,6 +378,13 @@ export default function BeanPassportPage({
                 }`}
               >
                 {bean.is_finished ? 'Reopen this bag' : 'Mark as finished'}
+              </button>
+
+              <button
+                onClick={remove}
+                className="mt-3 w-full rounded-xl bg-red-900 py-3 font-semibold text-red-100"
+              >
+                Delete bean
               </button>
             </>
           )}
