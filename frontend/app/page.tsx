@@ -189,6 +189,14 @@ export default function BenchPage() {
   }
 
   const lastShot = shots[shots.length - 1]
+  const topShots = [...shots]
+    .sort((a, b) => {
+      const ra = a.taste_reviews[0]?.overall_rating ?? -1
+      const rb = b.taste_reviews[0]?.overall_rating ?? -1
+      if (rb !== ra) return rb - ra
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+    .slice(0, 5)
   const goldenPhoto = golden ? thumbs[`shot:${golden.shot_id}`] : null
 
   if (loading) {
@@ -390,19 +398,19 @@ export default function BenchPage() {
             </div>
           </div>
 
-          {shots.length > 0 && (
+          {topShots.length > 0 && (
             <div className="mt-6 rounded-2xl bg-espresso-800 p-4 shadow-xl">
               <h3 className="text-lg font-semibold text-espresso-100">
                 Dial-In Progress
               </h3>
               <div className="mt-4 space-y-4">
-                {shots.map((s, i) => (
+                {topShots.map((s, i) => (
                   <div key={s.id} className="flex items-start gap-4">
                     <div className="flex flex-col items-center">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-espresso-300 text-sm font-bold text-espresso-900">
                         {i + 1}
                       </div>
-                      {i < shots.length - 1 && (
+                      {i < topShots.length - 1 && (
                         <div className="h-full w-0.5 min-h-[2rem] bg-espresso-600" />
                       )}
                     </div>
