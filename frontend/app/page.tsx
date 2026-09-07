@@ -401,7 +401,7 @@ export default function BenchPage() {
           {topShots.length > 0 && (
             <div className="mt-6 rounded-2xl bg-espresso-800 p-4 shadow-xl">
               <h3 className="text-lg font-semibold text-espresso-100">
-                Dial-In Progress
+                Top 5 Rated Shots
               </h3>
               <div className="mt-4 space-y-4">
                 {topShots.map((s, i) => (
