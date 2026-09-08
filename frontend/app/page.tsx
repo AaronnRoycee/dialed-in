@@ -48,11 +48,17 @@ type Media = {
 type StatsShot = {
   dose_g: number
   actual_yield_g: number | null
-  brew_ratio: number | null
+  actual_time_s: number | null
   created_at: string
   bean_id: string
   beans: { id: string; roaster: string; coffee_name: string } | null
   taste_reviews: { overall_rating: number | null }[]
+}
+
+type StatsBean = {
+  id: string
+  is_active: boolean
+  is_finished: boolean
 }
 
 export default function BenchPage() {
@@ -64,6 +70,7 @@ export default function BenchPage() {
   const [golden, setGolden] = useState<GoldenRecipe | null>(null)
   const [shots, setShots] = useState<Shot[]>([])
   const [statsShots, setStatsShots] = useState<StatsShot[]>([])
+  const [statsBeans, setStatsBeans] = useState<StatsBean[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [averageRating, setAverageRating] = useState<number | null>(null)
 
@@ -94,14 +101,21 @@ export default function BenchPage() {
 
       setHouseholdName(household?.name ?? 'Home')
 
-      const { data: allShotData } = await supabase
-        .from('shots')
-        .select(
-          'dose_g, actual_yield_g, brew_ratio, created_at, bean_id, beans(coffee_name, roaster), taste_reviews(overall_rating)'
-        )
-        .eq('household_id', profile.household_id)
-        .order('created_at', { ascending: false })
+      const [{ data: allShotData }, { data: allBeanData }] = await Promise.all([
+        supabase
+          .from('shots')
+          .select(
+            'dose_g, actual_yield_g, actual_time_s, created_at, bean_id, beans(coffee_name, roaster), taste_reviews(overall_rating)'
+          )
+          .eq('household_id', profile.household_id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('beans')
+          .select('id, is_active, is_finished')
+          .eq('household_id', profile.household_id),
+      ])
       setStatsShots((allShotData as unknown as StatsShot[]) ?? [])
+      setStatsBeans((allBeanData as StatsBean[]) ?? [])
 
       const { data: beanData } = await supabase
         .from('beans')
@@ -234,18 +248,14 @@ export default function BenchPage() {
       .filter((v): v is number => v !== null)
     const avgYield =
       yields.length > 0 ? yields.reduce((a, b) => a + b, 0) / yields.length : null
-    const ratios = statsShots
-      .map((s) => s.brew_ratio)
+    const times = statsShots
+      .map((s) => s.actual_time_s)
       .filter((v): v is number => v !== null)
-    const avgRatio =
-      ratios.length > 0 ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null
+    const avgTime =
+      times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : null
 
-    const ratings = statsShots
-      .flatMap((s) => s.taste_reviews)
-      .map((r) => r.overall_rating)
-      .filter((v): v is number => v !== null)
-    const avgRating =
-      ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null
+    const beansUsed = statsBeans.length
+    const beansInUse = statsBeans.filter((b) => b.is_active && !b.is_finished).length
 
     const beanCounts: Record<
       string,
@@ -277,11 +287,14 @@ export default function BenchPage() {
       .filter((b) => b.count > 0)
       .sort((a, b) => b.total / b.count - a.total / a.count)[0]
 
-    return { total, thisMonth, avgDose, avgYield, avgRatio, avgRating, mostUsed, highestRated }
-  }, [statsShots])
+    return { total, thisMonth, avgDose, avgYield, avgTime, beansUsed, beansInUse, mostUsed, highestRated }
+  }, [statsShots, statsBeans])
 
   const fmtStat = (n: number | null, digits = 1) =>
     n === null ? '—' : n.toFixed(digits)
+
+  const fmtAvgTime = (seconds: number | null) =>
+    seconds === null ? '—' : formatTime(Math.round(seconds))
 
   if (loading) {
     return (
@@ -541,7 +554,7 @@ export default function BenchPage() {
         </>
       )}
 
-      {statsShots.length > 0 && (
+      {(statsShots.length > 0 || statsBeans.length > 0) && (
         <div className="mt-6 rounded-2xl bg-espresso-800 p-4 shadow-xl">
           <h3 className="text-lg font-semibold text-espresso-100">
             Your Stats
@@ -573,15 +586,17 @@ export default function BenchPage() {
             </div>
             <div className="rounded-xl bg-espresso-900 p-3">
               <p className="text-2xl font-semibold text-espresso-100">
-                {fmtStat(stats.avgRatio)}
+                {fmtAvgTime(stats.avgTime)}
               </p>
-              <p className="text-xs text-espresso-500">Avg ratio</p>
+              <p className="text-xs text-espresso-500">Avg time</p>
             </div>
             <div className="rounded-xl bg-espresso-900 p-3">
               <p className="text-2xl font-semibold text-espresso-100">
-                {fmtStat(stats.avgRating)}
+                {stats.beansUsed}
               </p>
-              <p className="text-xs text-espresso-500">Avg rating</p>
+              <p className="text-xs text-espresso-500">
+                Beans · {stats.beansInUse} in use
+              </p>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
