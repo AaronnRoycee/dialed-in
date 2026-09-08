@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getSignedUrls } from '@/lib/storage'
@@ -45,6 +45,16 @@ type Media = {
   is_primary: boolean
 }
 
+type StatsShot = {
+  dose_g: number
+  actual_yield_g: number | null
+  brew_ratio: number | null
+  created_at: string
+  bean_id: string
+  beans: { id: string; roaster: string; coffee_name: string } | null
+  taste_reviews: { overall_rating: number | null }[]
+}
+
 export default function BenchPage() {
   const router = useRouter()
   const [householdName, setHouseholdName] = useState<string | null>(null)
@@ -53,6 +63,7 @@ export default function BenchPage() {
   const [beanPhoto, setBeanPhoto] = useState<string | null>(null)
   const [golden, setGolden] = useState<GoldenRecipe | null>(null)
   const [shots, setShots] = useState<Shot[]>([])
+  const [statsShots, setStatsShots] = useState<StatsShot[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [averageRating, setAverageRating] = useState<number | null>(null)
 
@@ -82,6 +93,15 @@ export default function BenchPage() {
         .single()
 
       setHouseholdName(household?.name ?? 'Home')
+
+      const { data: allShotData } = await supabase
+        .from('shots')
+        .select(
+          'dose_g, actual_yield_g, brew_ratio, created_at, bean_id, beans(coffee_name, roaster), taste_reviews(overall_rating)'
+        )
+        .eq('household_id', profile.household_id)
+        .order('created_at', { ascending: false })
+      setStatsShots((allShotData as unknown as StatsShot[]) ?? [])
 
       const { data: beanData } = await supabase
         .from('beans')
@@ -198,6 +218,70 @@ export default function BenchPage() {
     })
     .slice(0, 5)
   const goldenPhoto = golden ? thumbs[`shot:${golden.shot_id}`] : null
+
+  const stats = useMemo(() => {
+    const now = new Date()
+    const total = statsShots.length
+    const thisMonth = statsShots.filter((s) => {
+      const d = new Date(s.created_at)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    }).length
+
+    const avgDose =
+      total > 0 ? statsShots.reduce((a, s) => a + s.dose_g, 0) / total : null
+    const yields = statsShots
+      .map((s) => s.actual_yield_g)
+      .filter((v): v is number => v !== null)
+    const avgYield =
+      yields.length > 0 ? yields.reduce((a, b) => a + b, 0) / yields.length : null
+    const ratios = statsShots
+      .map((s) => s.brew_ratio)
+      .filter((v): v is number => v !== null)
+    const avgRatio =
+      ratios.length > 0 ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null
+
+    const ratings = statsShots
+      .flatMap((s) => s.taste_reviews)
+      .map((r) => r.overall_rating)
+      .filter((v): v is number => v !== null)
+    const avgRating =
+      ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null
+
+    const beanCounts: Record<
+      string,
+      { roaster: string; coffee_name: string; count: number }
+    > = {}
+    const beanRatings: Record<
+      string,
+      { roaster: string; coffee_name: string; total: number; count: number }
+    > = {}
+
+    statsShots.forEach((s) => {
+      const bean = s.beans
+      if (!bean) return
+      if (!beanCounts[bean.id])
+        beanCounts[bean.id] = { ...bean, count: 0 }
+      beanCounts[bean.id].count += 1
+
+      const rating = s.taste_reviews[0]?.overall_rating ?? null
+      if (rating !== null) {
+        if (!beanRatings[bean.id])
+          beanRatings[bean.id] = { ...bean, total: 0, count: 0 }
+        beanRatings[bean.id].total += rating
+        beanRatings[bean.id].count += 1
+      }
+    })
+
+    const mostUsed = Object.values(beanCounts).sort((a, b) => b.count - a.count)[0]
+    const highestRated = Object.values(beanRatings)
+      .filter((b) => b.count > 0)
+      .sort((a, b) => b.total / b.count - a.total / a.count)[0]
+
+    return { total, thisMonth, avgDose, avgYield, avgRatio, avgRating, mostUsed, highestRated }
+  }, [statsShots])
+
+  const fmtStat = (n: number | null, digits = 1) =>
+    n === null ? '—' : n.toFixed(digits)
 
   if (loading) {
     return (
@@ -455,6 +539,78 @@ export default function BenchPage() {
             </div>
           )}
         </>
+      )}
+
+      {statsShots.length > 0 && (
+        <div className="mt-6 rounded-2xl bg-espresso-800 p-4 shadow-xl">
+          <h3 className="text-lg font-semibold text-espresso-100">
+            Your Stats
+          </h3>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {stats.total}
+              </p>
+              <p className="text-xs text-espresso-500">Total shots</p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {stats.thisMonth}
+              </p>
+              <p className="text-xs text-espresso-500">This month</p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {fmtStat(stats.avgDose)}
+              </p>
+              <p className="text-xs text-espresso-500">Avg dose (g)</p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {fmtStat(stats.avgYield)}
+              </p>
+              <p className="text-xs text-espresso-500">Avg yield (g)</p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {fmtStat(stats.avgRatio)}
+              </p>
+              <p className="text-xs text-espresso-500">Avg ratio</p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-2xl font-semibold text-espresso-100">
+                {fmtStat(stats.avgRating)}
+              </p>
+              <p className="text-xs text-espresso-500">Avg rating</p>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-xs text-espresso-500">Most-used bean</p>
+              <p className="font-semibold text-espresso-100">
+                {stats.mostUsed
+                  ? `${stats.mostUsed.roaster} — ${stats.mostUsed.coffee_name}`
+                  : '—'}
+              </p>
+              <p className="text-xs text-espresso-400">
+                {stats.mostUsed ? `${stats.mostUsed.count} shots` : ''}
+              </p>
+            </div>
+            <div className="rounded-xl bg-espresso-900 p-3">
+              <p className="text-xs text-espresso-500">Highest-rated bean</p>
+              <p className="font-semibold text-espresso-100">
+                {stats.highestRated
+                  ? `${stats.highestRated.roaster} — ${stats.highestRated.coffee_name}`
+                  : '—'}
+              </p>
+              <p className="text-xs text-espresso-400">
+                {stats.highestRated
+                  ? `${(stats.highestRated.total / stats.highestRated.count).toFixed(1)} / 5`
+                  : ''}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   )

@@ -36,6 +36,10 @@ export default function ProfilePage() {
   const [householdName, setHouseholdName] = useState('')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [joinCode, setJoinCode] = useState('')
+  const [joining, setJoining] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -188,6 +192,54 @@ export default function ProfilePage() {
     setGrinders((prev) => prev.filter((g) => g.id !== id))
   }
 
+  const copyCode = async () => {
+    if (!household) return
+    try {
+      await navigator.clipboard.writeText(household.id)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard unavailable
+    }
+  }
+
+  const joinHousehold = async () => {
+    const code = joinCode.trim()
+    if (!userId || !profile || !code) return
+    setJoining(true)
+    setJoinError(null)
+
+    const { data: found, error: findErr } = await supabase
+      .from('households')
+      .select('id')
+      .eq('id', code)
+      .maybeSingle()
+
+    if (findErr || !found) {
+      setJoinError('Household not found. Check the code and try again.')
+      setJoining(false)
+      return
+    }
+
+    const { error: memberErr } = await supabase
+      .from('household_members')
+      .insert({ household_id: found.id, user_id: userId, role: 'member' })
+
+    if (memberErr) {
+      setJoinError(memberErr.message)
+      setJoining(false)
+      return
+    }
+
+    await supabase
+      .from('profiles')
+      .update({ household_id: found.id })
+      .eq('id', profile.id)
+
+    setJoining(false)
+    window.location.reload()
+  }
+
   const signOut = async () => {
     await supabase.auth.signOut()
     router.push('/auth/sign-in')
@@ -243,15 +295,58 @@ export default function ProfilePage() {
 
         <section className="rounded-2xl bg-espresso-800 p-5 shadow-xl">
           <h2 className="text-lg font-semibold text-espresso-100">Household</h2>
-          <div className="mt-3">
-            <label className="text-sm text-espresso-300">Household name</label>
-            <input
-              type="text"
-              value={householdName}
-              onChange={(e) => setHouseholdName(e.target.value)}
-              className="mt-1 w-full rounded-xl bg-espresso-900 p-3 text-espresso-100 outline-none"
-            />
-          </div>
+          {household ? (
+            <div className="mt-3 space-y-4">
+              <div>
+                <label className="text-sm text-espresso-300">Household name</label>
+                <input
+                  type="text"
+                  value={householdName}
+                  onChange={(e) => setHouseholdName(e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-espresso-900 p-3 text-espresso-100 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-espresso-300">Invite code</label>
+                <p className="mt-1 break-all rounded-xl bg-espresso-900 p-3 font-mono text-xs text-espresso-100">
+                  {household.id}
+                </p>
+                <p className="mt-1 text-xs text-espresso-500">
+                  Share this code so others can join your household.
+                </p>
+                <button
+                  onClick={copyCode}
+                  className="mt-2 rounded-xl bg-espresso-300 px-4 py-2 text-sm font-semibold text-espresso-900"
+                >
+                  {copied ? 'Copied' : 'Copy invite code'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3">
+              <p className="text-sm text-espresso-300">
+                Have an invite code? Join an existing household to share beans,
+                shots, and recipes.
+              </p>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                placeholder="Household code"
+                className="mt-2 w-full rounded-xl bg-espresso-900 p-3 text-espresso-100 placeholder-espresso-500 outline-none"
+              />
+              {joinError && (
+                <p className="mt-2 text-sm text-red-400">{joinError}</p>
+              )}
+              <button
+                onClick={joinHousehold}
+                disabled={joining || !joinCode.trim()}
+                className="mt-2 w-full rounded-xl bg-espresso-300 py-3 font-semibold text-espresso-900 disabled:opacity-50"
+              >
+                {joining ? 'Joining...' : 'Join household'}
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl bg-espresso-800 p-5 shadow-xl">
