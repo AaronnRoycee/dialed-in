@@ -40,6 +40,9 @@ export default function ProfilePage() {
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -205,39 +208,41 @@ export default function ProfilePage() {
 
   const joinHousehold = async () => {
     const code = joinCode.trim()
-    if (!userId || !profile || !code) return
+    if (!code) return
     setJoining(true)
     setJoinError(null)
 
-    const { data: found, error: findErr } = await supabase
-      .from('households')
-      .select('id')
-      .eq('id', code)
-      .maybeSingle()
+    const { error: joinErr } = await supabase.rpc('join_household', {
+      household_code: code,
+    })
 
-    if (findErr || !found) {
-      setJoinError('Household not found. Check the code and try again.')
+    if (joinErr) {
+      setJoinError(
+        joinErr.message.includes('Household not found')
+          ? 'Household not found. Check the code and try again.'
+          : joinErr.message
+      )
       setJoining(false)
       return
     }
-
-    const { error: memberErr } = await supabase
-      .from('household_members')
-      .insert({ household_id: found.id, user_id: userId, role: 'member' })
-
-    if (memberErr) {
-      setJoinError(memberErr.message)
-      setJoining(false)
-      return
-    }
-
-    await supabase
-      .from('profiles')
-      .update({ household_id: found.id })
-      .eq('id', profile.id)
 
     setJoining(false)
     window.location.reload()
+  }
+
+  const deleteAccount = async () => {
+    setDeleting(true)
+    setDeleteError(null)
+
+    const { error: deleteErr } = await supabase.rpc('delete_user_account')
+    if (deleteErr) {
+      setDeleteError(deleteErr.message)
+      setDeleting(false)
+      return
+    }
+
+    await supabase.auth.signOut()
+    router.push('/auth/sign-in')
   }
 
   const signOut = async () => {
@@ -470,6 +475,48 @@ export default function ProfilePage() {
         >
           Sign out
         </button>
+
+        <section className="rounded-2xl border border-red-900/60 bg-espresso-800 p-5 shadow-xl">
+          <h2 className="text-lg font-semibold text-red-400">Danger zone</h2>
+          {!showDelete ? (
+            <button
+              onClick={() => setShowDelete(true)}
+              className="mt-3 w-full rounded-xl bg-red-950 py-3 font-semibold text-red-300"
+            >
+              Delete account
+            </button>
+          ) : (
+            <div className="mt-3">
+              <p className="text-sm text-espresso-300">
+                This permanently deletes your account and profile. If you are
+                the only member of your household, all of its beans, shots,
+                reviews, recipes, and photos are deleted too. If others share
+                your household, their data is kept.
+              </p>
+              <p className="mt-2 text-sm font-semibold text-red-300">
+                This cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="mt-2 text-sm text-red-400">{deleteError}</p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => setShowDelete(false)}
+                  className="flex-1 rounded-xl bg-espresso-900 py-3 font-semibold text-espresso-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteAccount}
+                  disabled={deleting}
+                  className="flex-1 rounded-xl bg-red-600 py-3 font-semibold text-white disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete forever'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )

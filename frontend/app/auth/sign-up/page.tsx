@@ -46,6 +46,15 @@ export default function SignUpPage() {
     router.push('/setup')
   }
 
+  const signInWithApple = async () => {
+    setError(null)
+    const { error: appleError } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: { redirectTo: window.location.origin },
+    })
+    if (appleError) setError(appleError.message)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-espresso-950">
       <form
@@ -85,6 +94,18 @@ export default function SignUpPage() {
             className="w-full rounded-xl bg-espresso-300 py-3 font-semibold text-espresso-900"
           >
             Sign up
+          </button>
+          <div className="flex items-center gap-3 text-xs text-espresso-500">
+            <div className="h-px flex-1 bg-espresso-700" />
+            or
+            <div className="h-px flex-1 bg-espresso-700" />
+          </div>
+          <button
+            type="button"
+            onClick={signInWithApple}
+            className="w-full rounded-xl bg-espresso-100 py-3 font-semibold text-espresso-900"
+          >
+            Continue with Apple
           </button>
         </div>
         <p className="mt-4 text-center text-sm text-espresso-300">
